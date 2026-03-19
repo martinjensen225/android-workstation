@@ -103,7 +103,7 @@ var defaultTags = {
 var mergedTags = union(defaultTags, tags)
 var deployBudget = enableBudget && !empty(budgetContactEmails)
 
-module resourceGroup 'br/public:avm/res/resources/resource-group:0.4.0' = {
+module resourceGroupModule 'br/public:avm/res/resources/resource-group:0.4.0' = {
   name: 'androidWorkstationResourceGroup'
   params: {
     name: resourceGroupName
@@ -140,7 +140,7 @@ module vmStack './modules/dev-vm-stack.bicep' = {
     tags: mergedTags
   }
   dependsOn: [
-    resourceGroup
+    resourceGroupModule
   ]
 }
 
@@ -177,8 +177,8 @@ resource budget 'Microsoft.Consumption/budgets@2024-08-01' = if (deployBudget) {
   }
 }
 
-output resourceGroupName string = resourceGroup.outputs.name
-output resourceGroupResourceId string = resourceGroup.outputs.resourceId
+output resourceGroupName string = resourceGroupModule.outputs.name
+output resourceGroupResourceId string = resourceGroupModule.outputs.resourceId
 output vmResourceId string = vmStack.outputs.vmResourceId
 output virtualNetworkResourceId string = vmStack.outputs.virtualNetworkResourceId
 output subnetResourceId string = vmStack.outputs.subnetResourceId

@@ -140,8 +140,8 @@ resource networkSecurityGroup 'Microsoft.Network/networkSecurityGroups@2024-05-0
   location: location
   tags: tags
   properties: {
-    securityRules: [
-      if (allowRestrictedSshRule) {
+    securityRules: allowRestrictedSshRule ? [
+      {
         name: 'AllowSshFromApprovedCidrs'
         properties: {
           access: 'Allow'
@@ -154,7 +154,7 @@ resource networkSecurityGroup 'Microsoft.Network/networkSecurityGroups@2024-05-0
           destinationAddressPrefix: '*'
         }
       }
-    ]
+    ] : []
   }
 }
 
@@ -239,10 +239,6 @@ module vm 'br/public:avm/res/compute/virtual-machine:0.21.0' = {
     tags: tags
     enableTelemetry: false
   }
-  dependsOn: [
-    virtualNetwork
-    networkSecurityGroup
-  ]
 }
 
 output vmResourceId string = vm.outputs.resourceId

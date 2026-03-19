@@ -1,0 +1,8 @@
+4376 : 2026-03-19 13:49:11,382 : INFO : telemetry.main : Attempt start. Configuration directory [C:\Users\MartinEngelundJensen\Downloads\Code\martinjensen225\android-workstation\.azure-validate]. Cache directory [C:\Users\MartinEngelundJensen\Downloads\Code\martinjensen225\android-workstation\.azure-validate\telemetry\20260319134911112].
+4376 : 2026-03-19 13:49:11,382 : INFO : telemetry.records : 1 cache files to upload.
+4376 : 2026-03-19 13:49:11,400 : INFO : telemetry.records : Processed file C:\Users\MartinEngelundJensen\Downloads\Code\martinjensen225\android-workstation\.azure-validate\telemetry\20260319134911112\cache into 1 records.
+4376 : 2026-03-19 13:49:11,401 : INFO : telemetry.records : Remove directory C:\Users\MartinEngelundJensen\Downloads\Code\martinjensen225\android-workstation\.azure-validate\telemetry\20260319134911112
+4376 : 2026-03-19 13:49:11,459 : INFO : telemetry.client : Accumulated 1 events. Flush the clients.
+4376 : 2026-03-19 13:49:11,459 : INFO : telemetry.client : Flush client c4395b75-49cc-422c-bc95-c7d51aef5d46.
+4376 : 2026-03-19 13:49:13,531 : ERROR : telemetry.sender : Upload failed. OSError: <urlopen error [WinError 10061] No connection could be made because the target machine actively refused it>
+4376 : 2026-03-19 13:49:13,531 : INFO : telemetry.sender : Finish uploading in 2.071469 seconds.

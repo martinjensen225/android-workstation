@@ -1,0 +1,3 @@
+CMD-LOG-LINE-BEGIN 4988 | 2026-03-19 13:49:10,960 | INFO | az_command_data_logger | command args: bicep version
+CMD-LOG-LINE-BEGIN 4988 | 2026-03-19 13:49:11,022 | ERROR | az_command_data_logger | Bicep CLI not found. Install it now by running "az bicep install".
+CMD-LOG-LINE-BEGIN 4988 | 2026-03-19 13:49:11,022 | INFO | az_command_data_logger | exit code: 1
