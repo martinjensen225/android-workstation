@@ -1,0 +1,5 @@
+Host __PRIMARY_GITHUB_HOST__
+  HostName __PRIMARY_GITHUB_HOST__
+  User git
+  IdentityFile __SSH_KEY_PATH__
+  IdentitiesOnly yes

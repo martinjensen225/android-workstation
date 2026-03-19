@@ -1,0 +1,18 @@
+{
+  "termux": [
+    {
+      "name": "android-workstation",
+      "enabled": false,
+      "url": "git@github.com:martinjensen225/android-workstation.git",
+      "path": "$HOME/code/personal/android-workstation"
+    }
+  ],
+  "debian": [
+    {
+      "name": "avd-workstation",
+      "enabled": false,
+      "url": "git@github.com:martinjensen225/avd-workstation.git",
+      "path": "/root/code/work/avd-workstation"
+    }
+  ]
+}

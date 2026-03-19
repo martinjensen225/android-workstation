@@ -1,0 +1,6 @@
+#!/data/data/com.termux/files/usr/bin/bash
+
+set -Eeuo pipefail
+
+workspace_root="${1:-__WORKSPACE_ROOT__}"
+exec code-server "$workspace_root"

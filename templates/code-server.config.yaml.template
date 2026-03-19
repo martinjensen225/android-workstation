@@ -1,0 +1,5 @@
+bind-addr: __CODE_SERVER_BIND_ADDR__
+auth: password
+password: __CODE_SERVER_PASSWORD__
+cert: false
+disable-telemetry: true

@@ -1,0 +1,106 @@
+{
+  "bundleName": "android-workstation",
+  "termux": {
+    "corePackages": [
+      "git",
+      "openssh",
+      "curl",
+      "wget",
+      "nano",
+      "vim",
+      "python",
+      "nodejs-lts",
+      "tmux",
+      "ripgrep",
+      "jq",
+      "gh",
+      "rsync",
+      "zip",
+      "unzip",
+      "tar",
+      "build-essential",
+      "proot-distro"
+    ],
+    "editorPackages": [
+      "neovim"
+    ],
+    "turPackages": [
+      "code-server"
+    ]
+  },
+  "node": {
+    "globalPackages": {
+      "codexTermux": [
+        "@mmmbuto/codex-cli-termux"
+      ]
+    }
+  },
+  "directories": {
+    "termux": [
+      "$HOME/code/work",
+      "$HOME/code/personal",
+      "$HOME/code/scratch",
+      "$HOME/bin",
+      "$HOME/.ssh",
+      "$HOME/.ssh/config.d",
+      "$HOME/.config/code-server",
+      "$HOME/.config/nvim",
+      "$HOME/.config/android-workstation",
+      "$HOME/.local/state/android-workstation"
+    ],
+    "sharedStorage": [
+      "$HOME/storage/shared/Documents/Obsidian",
+      "$HOME/storage/shared/Documents/Backups/galaxy-dex-workstation"
+    ]
+  },
+  "obsidian": {
+    "scaffoldDirectories": [
+      "inbox",
+      "daily",
+      "projects",
+      "reference",
+      "snippets",
+      "attachments"
+    ]
+  },
+  "debian": {
+    "basePackages": [
+      "ca-certificates",
+      "curl",
+      "wget",
+      "gpg",
+      "apt-transport-https",
+      "git",
+      "openssh-client",
+      "jq"
+    ],
+    "workspaceDirectories": [
+      "/root/code/work",
+      "/root/code/personal",
+      "/root/code/scratch"
+    ],
+    "vscodePackages": [
+      "code"
+    ],
+    "azurePrerequisitePackages": [
+      "curl",
+      "ca-certificates",
+      "apt-transport-https",
+      "lsb-release",
+      "gnupg",
+      "git"
+    ]
+  },
+  "backup": {
+    "paths": [
+      "$HOME/.bashrc",
+      "$HOME/.gitconfig",
+      "$HOME/.ssh/config",
+      "$HOME/.ssh/config.d",
+      "$HOME/.config/code-server",
+      "$HOME/.config/nvim",
+      "$HOME/.config/android-workstation",
+      "$HOME/.local/state/android-workstation"
+    ]
+  }
+}

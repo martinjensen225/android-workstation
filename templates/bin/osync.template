@@ -1,0 +1,20 @@
+#!/data/data/com.termux/files/usr/bin/bash
+
+set -Eeuo pipefail
+
+cd "__OBSIDIAN_VAULT_PATH__"
+git add -A
+
+if git diff --cached --quiet; then
+  printf '%s\n' "No changes to commit."
+  exit 0
+fi
+
+if [[ $# -gt 0 ]]; then
+  commit_message="$*"
+else
+  commit_message="notes: update work vault $(date '+%Y-%m-%d %H:%M:%S')"
+fi
+
+git commit -m "$commit_message"
+exec git push

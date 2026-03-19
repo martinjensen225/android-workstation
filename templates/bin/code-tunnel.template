@@ -1,0 +1,5 @@
+#!/data/data/com.termux/files/usr/bin/bash
+
+set -Eeuo pipefail
+
+exec proot-distro login __DEBIAN_DISTRO__ -- bash -lc 'cd ~/code && code tunnel'

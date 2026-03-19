@@ -1,0 +1,40 @@
+export PATH="$HOME/bin:$PATH"
+export EDITOR="__TERMUX_EDITOR__"
+export WORKSPACE_ROOT="__WORKSPACE_ROOT__"
+export WORK_REPO_ROOT="__WORK_REPO_ROOT__"
+export PERSONAL_REPO_ROOT="__PERSONAL_REPO_ROOT__"
+export SCRATCH_REPO_ROOT="__SCRATCH_REPO_ROOT__"
+export OBSIDIAN_WORK_VAULT="__OBSIDIAN_VAULT_PATH__"
+export CODE_SERVER_BIND_ADDR="__CODE_SERVER_BIND_ADDR__"
+export SSH_KEY_PATH="__SSH_KEY_PATH__"
+
+alias ll='ls -lah'
+alias gs='git status -sb'
+alias ga='git add -A'
+alias gc='git commit'
+alias gp='git pull --ff-only'
+alias gpush='git push'
+alias desk='tmux new -A -s desk'
+alias deb='proot-distro login __DEBIAN_DISTRO__'
+alias azshell='azure-shell'
+alias codex-web='chatgpt-codex'
+alias repos-clone='clone-managed-repos'
+
+ssh-load() {
+  if [[ ! -f "$SSH_KEY_PATH" ]]; then
+    printf '%s\n' "Missing SSH key: $SSH_KEY_PATH" >&2
+    return 1
+  fi
+
+  eval "$(ssh-agent -s)"
+  ssh-add "$SSH_KEY_PATH"
+}
+
+github-ssh-key() {
+  if [[ ! -f "$SSH_KEY_PATH.pub" ]]; then
+    printf '%s\n' "Missing SSH public key: $SSH_KEY_PATH.pub" >&2
+    return 1
+  fi
+
+  cat "$SSH_KEY_PATH.pub"
+}

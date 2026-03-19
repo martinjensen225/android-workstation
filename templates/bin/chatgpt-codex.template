@@ -1,0 +1,9 @@
+#!/data/data/com.termux/files/usr/bin/bash
+
+set -Eeuo pipefail
+
+if command -v termux-open-url >/dev/null 2>&1; then
+  exec termux-open-url "https://chatgpt.com/codex"
+fi
+
+printf '%s\n' "Open https://chatgpt.com/codex in your browser."
