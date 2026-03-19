@@ -60,6 +60,27 @@ param autoShutdownTimeZone string
 @description('Email recipient for shutdown notifications.')
 param autoShutdownNotificationEmail string
 
+@description('Run unattended first-boot provisioning through VM custom data.')
+param enableBootstrapOnFirstBoot bool
+
+@description('Install Azure CLI during first-boot provisioning.')
+param bootstrapInstallAzureCli bool
+
+@description('Install Bicep CLI during first-boot provisioning when Azure CLI is installed.')
+param bootstrapInstallBicep bool
+
+@description('Install Terraform during first-boot provisioning.')
+param bootstrapInstallTerraform bool
+
+@description('Install GitHub CLI during first-boot provisioning.')
+param bootstrapInstallGithubCli bool
+
+@description('Install Docker during first-boot provisioning.')
+param bootstrapInstallDocker bool
+
+@description('Stable display name for the VS Code tunnel host after you register it.')
+param vscodeTunnelName string
+
 @description('Tags applied to resources in this stack.')
 param tags object = {}
 
@@ -73,6 +94,36 @@ var useNatGateway = outboundConnectivityMode == 'natGateway'
 var makeSubnetPrivate = useVmPublicIp || useNatGateway
 var allowRestrictedSshRule = useVmPublicIp && !empty(adminSshSourceCidrs)
 var subnetResourceId = '${virtualNetwork.id}/subnets/${subnetName}'
+var bootstrapScriptTemplate = loadTextContent('../scripts/bootstrap-vm.sh')
+var bootstrapScript = replace(
+  replace(
+    replace(
+      replace(
+        replace(
+          replace(
+            replace(
+              bootstrapScriptTemplate,
+              '__BOOTSTRAP_TARGET_USER__',
+              adminUsername
+            ),
+            '__BOOTSTRAP_INSTALL_AZURE_CLI__',
+            bootstrapInstallAzureCli ? 'true' : 'false'
+          ),
+          '__BOOTSTRAP_INSTALL_BICEP__',
+          bootstrapInstallBicep ? 'true' : 'false'
+        ),
+        '__BOOTSTRAP_INSTALL_TERRAFORM__',
+        bootstrapInstallTerraform ? 'true' : 'false'
+      ),
+      '__BOOTSTRAP_INSTALL_GITHUB_CLI__',
+      bootstrapInstallGithubCli ? 'true' : 'false'
+    ),
+    '__BOOTSTRAP_INSTALL_DOCKER__',
+    bootstrapInstallDocker ? 'true' : 'false'
+  ),
+  '__BOOTSTRAP_TUNNEL_NAME__',
+  vscodeTunnelName
+)
 
 resource natGatewayPublicIp 'Microsoft.Network/publicIPAddresses@2024-05-01' = if (useNatGateway) {
   name: natGatewayPublicIpName
@@ -173,6 +224,7 @@ module vm 'br/public:avm/res/compute/virtual-machine:0.21.0' = {
     }
     adminUsername: adminUsername
     disablePasswordAuthentication: true
+    customData: enableBootstrapOnFirstBoot ? bootstrapScript : ''
     publicKeys: [
       {
         keyData: adminSshPublicKey

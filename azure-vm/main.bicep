@@ -73,6 +73,27 @@ param autoShutdownTimeZone string = 'W. Europe Standard Time'
 @description('Optional email recipient for shutdown notifications. Leave empty to disable notifications.')
 param autoShutdownNotificationEmail string = ''
 
+@description('Run unattended first-boot provisioning through VM custom data. Recommended for this workflow.')
+param enableBootstrapOnFirstBoot bool = true
+
+@description('Install Azure CLI during first-boot provisioning.')
+param bootstrapInstallAzureCli bool = true
+
+@description('Install Bicep CLI during first-boot provisioning when Azure CLI is installed.')
+param bootstrapInstallBicep bool = true
+
+@description('Install Terraform during first-boot provisioning.')
+param bootstrapInstallTerraform bool = true
+
+@description('Install GitHub CLI during first-boot provisioning.')
+param bootstrapInstallGithubCli bool = false
+
+@description('Install Docker during first-boot provisioning.')
+param bootstrapInstallDocker bool = false
+
+@description('Stable display name for the VS Code tunnel host after you register it.')
+param vscodeTunnelName string = vmName
+
 @description('Create a subscription budget and email alerts. Recommended if you use Visual Studio monthly credit.')
 param enableBudget bool = true
 
@@ -137,6 +158,13 @@ module vmStack './modules/dev-vm-stack.bicep' = {
     autoShutdownTime: autoShutdownTime
     autoShutdownTimeZone: autoShutdownTimeZone
     autoShutdownNotificationEmail: autoShutdownNotificationEmail
+    enableBootstrapOnFirstBoot: enableBootstrapOnFirstBoot
+    bootstrapInstallAzureCli: bootstrapInstallAzureCli
+    bootstrapInstallBicep: bootstrapInstallBicep
+    bootstrapInstallTerraform: bootstrapInstallTerraform
+    bootstrapInstallGithubCli: bootstrapInstallGithubCli
+    bootstrapInstallDocker: bootstrapInstallDocker
+    vscodeTunnelName: vscodeTunnelName
     tags: mergedTags
   }
   dependsOn: [
@@ -187,3 +215,5 @@ output vmNicSummary array = vmStack.outputs.vmNicSummary
 output outboundConnectivityMode string = outboundConnectivityMode
 output publicIpEnabled bool = outboundConnectivityMode == 'vmPublicIp'
 output budgetCreated bool = deployBudget
+output bootstrapOnFirstBootEnabled bool = enableBootstrapOnFirstBoot
+output vscodeTunnelName string = vscodeTunnelName

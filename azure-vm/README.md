@@ -1,481 +1,232 @@
 # Azure VM Option for the Android Workstation
 
-## 1. Executive Summary
+## Executive Summary
 
-Hosting the development environment and the VS Code tunnel on an Azure Linux VM is a good idea for your setup if you treat it as an on-demand complement to the phone-hosted Debian path, not as a total replacement for it.
+This repo now treats the Azure VM as the remote development machine and VS Code tunnel host, while the phone remains the browser client.
 
-Important outbound correction, based on current Microsoft guidance as of March 19, 2026:
+The opinionated default in this repo is:
 
-- My first draft was incomplete on outbound internet access.
-- A brand-new Azure VNet created after March 31, 2026 is private-by-default when you use newer API versions and defaults.
-- For this VM to run `code tunnel`, package updates, and Git over the internet, it needs outbound connectivity.
-- The cost-aware future-proof default in this repo is now `outboundConnectivityMode = 'vmPublicIp'`, which gives the VM an explicit Standard public IP for egress while leaving inbound SSH blocked unless you explicitly supply `adminSshSourceCidrs`.
-- If you insist on no public IP at all, use `outboundConnectivityMode = 'natGateway'` and accept the higher fixed cost.
-- If you want the cheapest bridge and are willing to rely on Azure default outbound behavior, use `outboundConnectivityMode = 'defaultOutbound'`.
-
-The big wins are:
-
-- Much better extension compatibility than Debian-in-`proot-distro` on the phone, because the VM is a normal Azure Linux host instead of an Android-shaped userspace.
-- Much lower battery drain and heat on the phone because the phone becomes a browser client only.
-- A more comfortable Samsung DeX experience for longer sessions because indexing, language servers, Git operations, and package installs move off-device.
-
-The tradeoff is that you take on Azure cost and a little cloud-ops overhead. For your stated single-user dev/test use case, that trade is worth it if:
-
-- you already have the monthly Visual Studio Enterprise Azure credit
-- you only run the VM when needed
-- you keep the design private by default and avoid paid security add-ons that dominate the budget
-
-The best overall pattern is hybrid:
-
-- Keep the existing phone-hosted Debian/`proot-distro` tunnel path as your offline and emergency fallback.
-- Use the Azure VM as the better online primary for longer or more extension-sensitive sessions.
-
-## 2. Corrected Architecture Statement
-
-This is the target architecture evaluated and implemented here:
-
-- The phone remains the client.
-- The Azure VM becomes the remote development machine.
-- The VS Code tunnel runs on the Azure VM.
-- You connect to that tunnel from the browser on your phone in Samsung DeX.
-- Remote SSH is not the primary workflow. It is only an admin fallback if you explicitly enable it or use Azure portal admin paths.
-
-## 3. Assumptions and Constraints
-
-- Single-user personal dev/test workload.
-- Visual Studio Enterprise monthly Azure credit assumed: 150 USD per month.
-- Region assumption for cost modeling: `West Europe`.
-- OS assumption: Ubuntu Linux on Azure.
-- Primary access pattern: browser-based VS Code over a VS Code tunnel.
-- Default outbound mode in the provided Bicep: `vmPublicIp`
-- Security requirement: no Azure Firewall, avoid unnecessary always-on paid services.
-- IaC requirement: Bicep, with Azure Verified Modules where safely applied.
-- Current repo context: the phone-hosted `proot-distro` path remains valid and is not being replaced at the client layer.
-
-Source notes:
-
-- Microsoft Q&A confirms Visual Studio Enterprise includes 150 USD monthly credit and that the monthly cap resets rather than rolling over.
-- Microsoft Q&A also notes Visual Studio credit subscriptions are best-effort for dev/test and can suspend continuously running instances that exceed 120 hours.
-- Azure Bastion FAQ states Bastion pricing is hourly from deployment until deletion.
-- Azure Bastion pricing page currently shows Azure Bastion Developer as free.
-- Azure VM pricing pages confirm VM compute stops billing when the state is `Stopped (Deallocated)`, while managed disks still bill.
-- Azure Managed Disk pricing pages confirm disks bill independently from VM runtime.
-- Azure Virtual Network default outbound guidance states that after March 31, 2026, API versions released after that date default new VNet subnets to private and require explicit outbound to reach public endpoints.
-
-Pricing note:
-
-- Azure's public pricing pages do not expose every live numeric cell in static HTML, so the tables below are practical estimates rather than invoice guarantees.
-- The numbers are intentionally conservative and good enough for design decisions.
-- Before you deploy, you should still confirm the exact figure for your final SKU in the Azure pricing calculator for your subscription offer.
-
-## 4. Options Comparison Table
-
-| Option | Cost | Setup complexity | Security posture | Extension compatibility | Browser responsiveness from phone | Battery and heat on phone | Operational friction | Reliability | DeX fit | Honest verdict |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Phone-hosted Debian in `proot-distro` plus VS Code tunnel | Lowest direct cloud cost | Medium to high | Good if you keep everything local and outbound-only | Better than local `code-server`, still ARM64 and Android-shaped | Fine for light work, weaker for heavier indexing | Worst of the three | Lowest cloud friction, highest device babysitting | Depends on Android background behavior, battery, thermals | Strong when offline matters | Best zero-cost fallback, but still compromised by phone limits |
-| Azure Linux VM plus VS Code tunnel | Low if you stop the VM, moderate if you forget | Medium | Best balance when explicit outbound is configured and inbound is tightly restricted | Best overall for your stated workflow | Usually best if the network is stable | Best | Some Azure management overhead, but manageable | Better than phone-hosted for long sessions | Excellent because DeX client stays the same | Best overall online option |
-| Azure Linux VM plus Remote SSH only | Similar VM cost | Medium to high | Good if hardened correctly | Strong on desktop, weak for phone-browser workflow | Poor fit for phone browser because Remote SSH expects a richer client | Best | Higher friction from the phone | Good technically, but wrong interaction model | Weak for your stated browser-first DeX flow | Not recommended as the primary path |
-
-## 5. Cost Breakdown and Scenario Analysis
-
-### Cost model assumptions
-
-- Region: `West Europe`
-- VM OS: Ubuntu Linux
-- OS disk: `64 GiB StandardSSD_LRS`
-- Recommended security model: explicit outbound via a Standard public IP, no inbound SSH rule by default, no paid Bastion, no Azure Firewall
-- Estimated fixed monthly carry cost while deallocated: about `5.50 USD` for the OS disk
-- Estimated outbound network cost for this text-heavy workflow: negligible unless you start pulling large container images or big package caches regularly
-
-### What still costs money while the VM is deallocated
-
-- Managed OS disk
-- Public IP if you choose to allocate one
-- Paid Bastion SKUs if you deploy them
-- Any serverless helper you deliberately leave in place, although those are usually pennies at this scale
-
-### What stops costing money when the VM is deallocated
-
-- VM compute
-- VM license meter for the Ubuntu guest
-
-### VM size recommendations and scenario totals
-
-These scenario totals include the fixed OS disk carry cost.
-
-| SKU | Experience | 1h weekdays plus small weekend use | 2h weekdays plus small weekend use | 4h weekdays plus weekend use | Worst realistic month | Accidental overuse month | Fits 150 USD credit? |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| `Standard_B2s` | Good enough for tunnel, Git, CLI, light repo work. Too tight for heavier language servers or containers. | 6.80 USD | 7.90 USD | 10.30 USD | 12.90 USD | 41.50 USD | Yes, comfortably |
-| `Standard_B2ms` | Best value pick. Comfortable for tunnel, Git, Azure CLI, Bicep, Terraform, and light containers. | 8.10 USD | 10.30 USD | 15.10 USD | 20.30 USD | 77.50 USD | Yes, comfortably |
-| `Standard_D2as_v5` | More consistently snappy than burstable B-series. Good if you dislike burst-credit behavior. | 8.36 USD | 10.78 USD | 16.06 USD | 21.78 USD | 84.70 USD | Yes, comfortably |
-| `Standard_D4as_v5` | Comfortable and roomy, but starts to feel wasteful for this use case. | 11.22 USD | 16.06 USD | 26.62 USD | 38.06 USD | 163.90 USD | Yes for normal use, risky if you forget to stop it |
-
-### Recommended VM sizes
-
-1. `Standard_B2ms`
-   Best overall value for your use case. Enough RAM for a real browser tunnel session, Git, Azure CLI, Bicep, Terraform, and some light container use without paying for a larger general-purpose box.
-
-2. `Standard_D2as_v5`
-   Best pick if you want more predictable CPU behavior than B-series. Slightly more expensive, but still easily inside the credit.
-
-3. `Standard_B2s`
-   Fine if you want the cheapest option and your work stays light. I would not make this the only VM if you expect heavier extensions or occasional containers.
-
-4. `Standard_D4as_v5`
-   Comfortable but not cost-optimal. Good only if you know you need more RAM or more CPU headroom.
-
-### Credit buffer by scenario for the recommended `Standard_B2ms`
-
-| Scenario | Estimated total | Remaining buffer inside 150 USD credit | Cost risk |
-| --- | --- | --- | --- |
-| 1h weekdays plus small weekend use | 8.10 USD | 141.90 USD | Very low |
-| 2h weekdays plus small weekend use | 10.30 USD | 139.70 USD | Very low |
-| 4h weekdays plus weekend use | 15.10 USD | 134.90 USD | Low |
-| Worst realistic month | 20.30 USD | 129.70 USD | Low |
-| Accidental overuse month | 77.50 USD | 72.50 USD | Moderate, but still survivable inside the credit |
-
-### Non-obvious cost components
-
-- Public IP:
-  small recurring charge if you enable one, plus bigger attack surface
-- Bastion Developer:
-  free, but portal-only and limited, so it is an admin fallback rather than a workflow platform
-- Bastion Basic or Standard:
-  not cost-justified here because it is always-on and likely becomes one of the largest line items in the stack
-- Automation, Logic App, or Function start triggers:
-  low direct spend at this scale, but not zero in operational overhead
-- Monitoring:
-  avoid turning on more than you need, because log ingestion can exceed the VM cost surprisingly quickly
-
-## 6. Security Comparison
-
-### Option A: Standard public IP for explicit outbound, but no inbound SSH rule by default
-
-- Attack surface:
-  higher than a fully private VM, but still reasonable when the NSG keeps all inbound SSH blocked.
-- Recurring cost:
-  low
-- Operational friction:
-  low. The VM has explicit outbound connectivity for the tunnel and package management without needing NAT Gateway.
-- Suitability:
-  excellent for a single-user dev/test VM
-- Recommendation:
-  yes, this is now the default recommendation
-
-### Option B: No public IP, NAT Gateway, and optional Bastion Developer for admin
-
-- Attack surface:
-  lowest, because the VM remains private and egress is explicit.
-- Recurring cost:
-  materially higher because NAT Gateway has an always-on hourly charge.
-- Operational friction:
-  moderate. This is architecturally cleaner, but much less cost-efficient for one personal dev/test VM.
-- Suitability:
-  excellent if you have a hard requirement for no public IP on the VM
-- Recommendation:
-  only if you explicitly want a no-public-IP design
-
-### Option C: Default outbound compatibility mode on a non-private subnet
-
-- Attack surface:
-  low inbound exposure because there is still no VM public IP, but it relies on Azure default outbound behavior rather than an explicit owned egress method.
-- Recurring cost:
-  lowest
-- Operational friction:
-  low
-- Suitability:
-  acceptable as a temporary bridge if you want no public IP and also do not want NAT Gateway cost
-- Recommendation:
-  transitional only, not the long-term preferred design
-
-### Option D: Public IP plus restricted inbound SSH
-
-- Attack surface:
-  materially larger than outbound-only public IP
-- Recurring cost:
-  still low, but higher than private-only because of the public IP
-- Operational friction:
-  low once configured
-- Suitability:
-  acceptable only if you explicitly want direct SSH
-- Recommendation:
-  only as an opt-in fallback, not the default
-
-### NSG-only and JIT notes
-
-- NSG-only is what makes the `vmPublicIp` pattern workable here: the public IP gives explicit outbound, while the NSG keeps inbound closed unless you choose otherwise.
-- Just-In-Time access can be useful when you expose SSH publicly, but it adds complexity and is not necessary for the recommended tunnel-only design.
-
-## 7. Start/Stop Trigger Comparison
-
-| Option | Security | Cost | Complexity | Reliability | Ease from phone | Recommendation |
-| --- | --- | --- | --- | --- | --- | --- |
-| Azure mobile app or Azure portal manual start, built-in VM auto-shutdown | Strong, because there is no public webhook | Zero extra service cost | Lowest | High | Very good | Default |
-| Azure Automation runbook with webhook | Depends on webhook hygiene | Usually low | Medium | Good | Good with a phone shortcut | Optional only if you really want one-tap start |
-| Logic App HTTP trigger | Depends on URL secrecy and optional extra auth | Low | Medium | Good | Very good | Viable, but not needed by default |
-| Function App endpoint | Can be made strong, but more moving parts | Low at this scale | Highest of the listed options | Good if maintained | Good | Overkill here |
-| Always-on scheduler or start/stop solution | Fine | Low direct cost | Higher than needed | Good | Not a true on-demand model | Not recommended as the primary mechanism |
-
-Default approach:
-
-- Start the VM manually from the Azure mobile app or Azure portal from the phone.
-- Use built-in auto-shutdown on the VM every evening.
-- Add a subscription budget alert for cost guardrails.
-
-That gives you the best security-to-friction ratio because there is no extra webhook or public endpoint to protect.
-
-## 8. Final Recommendation
-
-The best overall design for your use case is:
-
-- `Standard_B2ms` Ubuntu VM in `West Europe`
+- Ubuntu VM on Azure
 - `outboundConnectivityMode = 'vmPublicIp'`
 - no inbound SSH rule by default
-- VS Code tunnel hosted on the VM
-- browser on the phone remains the client
-- optional restricted SSH only if you explicitly provide `adminSshSourceCidrs`
-- built-in VM auto-shutdown
-- manual start from Azure mobile app or Azure portal
-- optional subscription budget alert at 100 USD
+- first-boot automation through VM `customData`
+- browser-based VS Code on the phone as the primary workflow
+- SSH kept only as an admin fallback
 
-This is the best balance of:
+That means the deployment now automates the repeatable machine setup, but it still keeps the trust boundary around account authentication explicit.
 
-- security
-- low cost
-- minimal friction
-- strong extension compatibility
-- a clean fit for the browser-based DeX workflow
-- staying comfortably inside the monthly Azure credit
+## Current Design and Earlier Limitations
 
-## 9. Target Architecture
+Before this session, the `azure-vm` stack already had the right broad architecture:
+
+- subscription-scope Bicep entry point
+- resource group creation through AVM
+- Linux VM deployment through the AVM virtual machine module
+- explicit outbound options (`vmPublicIp`, `natGateway`, `defaultOutbound`)
+- no password auth
+- optional inbound SSH from approved CIDRs only
+- auto-shutdown and optional budget alerting
+
+The weak point was first-use automation:
+
+- the VM could deploy, but the actual machine setup still depended on a human logging in
+- `azure-vm/scripts/bootstrap-vm.sh` existed, but it was a manual post-deploy step
+- the VS Code tunnel still had to be installed and registered manually after first login
+- SSH key generation and local parameter preparation were still mostly manual chores
+
+This update shifts the repeatable work into provisioning and leaves only the account-auth step explicit.
+
+## Honest Answers to the Key Questions
+
+### How much can truly be automated?
+
+For this repo and workflow, the following can be automated reliably:
+
+- VM deployment
+- network and NSG setup
+- first-boot package update and base tooling install
+- Azure CLI, Bicep CLI, Terraform, VS Code CLI, and optional Docker/GitHub CLI install
+- linger enablement so a tunnel service can survive logout
+- creation of a one-command tunnel registration helper on the VM
+- local fallback SSH key generation and local parameter-file preparation from a phone-friendly shell
+
+### What still requires a human, and why?
+
+The unavoidable default human step is the first VS Code tunnel account sign-in.
+
+Current Microsoft documentation for Remote Tunnels still describes hosting and connecting with the same GitHub or Microsoft account, and the normal flow is an interactive sign-in step. The local VS Code CLI currently exposes `code tunnel user login --provider`, plus token-based options, but token delivery is a separate secret-management problem.
+
+So the honest default answer is:
+
+- base VM bootstrap: yes, fully automated
+- VS Code tunnel software install: yes, automated
+- VS Code tunnel service persistence after registration: yes, automated
+- initial tunnel identity registration: no, not by default
+
+### Can the tunnel be authenticated automatically?
+
+Technically, the current CLI supports token-based login:
+
+- `code tunnel user login --access-token`
+- `code tunnel user login --refresh-token`
+
+However, this repo does not automate that by default because:
+
+- `customData` is explicitly not a safe place for secrets
+- injecting a long-lived tunnel token through deployment inputs is poor secret hygiene
+- a clean, documented Microsoft flow for issuing and rotating those tokens as infrastructure input is not what the public Remote Tunnels docs center on
+
+So the recommended design keeps tunnel authentication as a one-time human sign-in and automates everything before and after it.
+
+### Do you need to manually connect after deployment?
+
+Usually yes, once.
+
+If you keep the secure default:
+
+- `adminSshSourceCidrs = []`
+- no tunnel auth token stored in Azure
+
+then you will need one admin session after deployment to run the tunnel registration helper. After that, the tunnel service can start automatically on boot and the phone can stay browser-only.
+
+### Is Key Vault justified here?
+
+Not by default.
+
+For this single-user dev/test setup, creating a Key Vault only to hold:
+
+- an SSH private key
+- or a VS Code tunnel token
+
+adds complexity without improving the default trust model enough to justify it.
+
+The better default is:
+
+- generate the SSH key outside Azure
+- keep the private key on your phone, laptop, or another key-management path you already trust
+- deploy only the public key
+- keep SSH closed by default and use it only as a temporary admin fallback
+
+If you later want a fully unattended tunnel registration path and already have a mature secret-delivery pattern, then an existing Key Vault plus managed identity can be revisited. It is intentionally not the default in this repo.
+
+## Opinionated Default Architecture
 
 ```text
-Samsung DeX browser on phone
+Phone browser in Samsung DeX
         |
         v
-VS Code tunnel service
+VS Code tunnel endpoint
         |
         v
 Azure Linux VM
   - Git
-  - Azure CLI
-  - Bicep
+  - Azure CLI + Bicep
   - Terraform
   - language servers and extensions
 ```
 
-Admin path:
+Admin fallback:
 
 ```text
-Azure portal on phone
+Termux / proot-distro / another admin shell
         |
         v
-Azure Bastion Developer or optional restricted SSH
+Temporary SSH from your current IP only
         |
         v
 Azure Linux VM
 ```
 
-## 10. Azure Resource List
+Why this is the default:
 
-Lean recommended resource set:
+- it preserves the browser-first phone workflow
+- it avoids Azure Firewall
+- it avoids NAT Gateway unless you explicitly want a no-public-IP design
+- it keeps always-on cost low
+- it keeps secrets out of deployment-time plaintext paths
 
-- Resource group
-- Virtual network
-- One subnet
-- Network security group
-- Linux VM with system-assigned managed identity
-- Managed OS disk
-- Standard public IP for explicit outbound in the default mode
-- Optional subscription budget
+## What Changed in the Repo
 
-Intentionally omitted by default:
+### Bicep changes
 
-- NAT Gateway
-- Azure Firewall
-- Paid Bastion
-- Key Vault
-- Logic App
-- Function App
-- Automation Account
-- Log Analytics workspace
+- `main.bicep` now exposes first-boot bootstrap controls and a stable `vscodeTunnelName`
+- `modules/dev-vm-stack.bicep` now loads `scripts/bootstrap-vm.sh` and passes it into the VM as `customData`
+- the example parameter file now includes the new bootstrap and tunnel-name parameters
 
-## 11. Bicep Solution
+### Bootstrap changes
 
-Files:
+`scripts/bootstrap-vm.sh` is now designed for both:
+
+- unattended first boot through Azure VM provisioning
+- manual reruns with `sudo` later if you need them
+
+It now:
+
+- installs the requested tooling automatically
+- enables linger for the admin user
+- writes `/usr/local/bin/android-workstation-tunnel-register`
+- writes `/usr/local/bin/android-workstation-bootstrap-status`
+- records status in `/var/lib/android-workstation/`
+- logs to `/var/log/android-workstation-bootstrap.log`
+
+### Phone-friendly helper
+
+`scripts/prepare-local-deployment.sh` now:
+
+- generates a local Ed25519 fallback SSH key if missing
+- copies the example parameter file to a local ignored parameter file
+- writes the generated public key into that local file
+- sets `adminUsername`
+- sets `vscodeTunnelName`
+- prints the `what-if` and deployment commands to run next
+
+## Files
 
 - [main.bicep](./main.bicep)
 - [modules/dev-vm-stack.bicep](./modules/dev-vm-stack.bicep)
 - [parameters/westeurope.example.bicepparam](./parameters/westeurope.example.bicepparam)
-
-AVM usage in this solution:
-
-- Resource group uses `br/public:avm/res/resources/resource-group:0.4.0`
-- Virtual machine uses `br/public:avm/res/compute/virtual-machine:0.21.0`
-
-Native Bicep is used for:
-
-- virtual network
-- subnet
-- network security group
-- subscription budget
-
-Why native Bicep is used there:
-
-- the stack is intentionally lean
-- the VM AVM already creates the NIC and optional public IP cleanly
-- the resource group and VM AVM modules were locally verifiable from the Bicep module cache on this workstation
-- keeping the network pieces native here avoids guessing additional AVM module interfaces in an offline shell
-
-## 12. VM Bootstrap and Tunnel Setup Guide
-
-Files:
-
 - [scripts/bootstrap-vm.sh](./scripts/bootstrap-vm.sh)
+- [scripts/prepare-local-deployment.sh](./scripts/prepare-local-deployment.sh)
 
-### First admin login
+## Deployment Flow
 
-Recommended path:
+### 1. Prepare local inputs from the phone or another admin shell
 
-1. Deploy the Bicep with `outboundConnectivityMode='vmPublicIp'`.
-2. Leave `adminSshSourceCidrs` empty if you want inbound SSH blocked.
-3. If you want first-day SSH administration, temporarily add your current public IP range to `adminSshSourceCidrs`.
-4. Clone this repo or paste the script into the VM.
+Recommended environments:
 
-### Run the bootstrap script
+- Termux plus `proot-distro` on the phone
+- Azure Cloud Shell in the browser
+- WSL or another Linux shell on a desktop
 
-```bash
-git clone https://github.com/martinjensen225/android-workstation.git
-cd android-workstation/azure-vm/scripts
-chmod +x bootstrap-vm.sh
-sudo TARGET_USER="$USER" ./bootstrap-vm.sh
-```
-
-Optional flags:
+Run:
 
 ```bash
-sudo TARGET_USER="$USER" INSTALL_DOCKER=true INSTALL_GITHUB_CLI=true ./bootstrap-vm.sh
+cd azure-vm/scripts
+chmod +x prepare-local-deployment.sh
+./prepare-local-deployment.sh
 ```
 
-### What the script installs
+This creates or reuses:
 
-- package updates
-- Git
-- curl, wget, jq, ripgrep, tmux, build tools
-- Azure CLI
-- Terraform
-- official VS Code package and `code` CLI
-- optional Docker
+- `~/.ssh/id_ed25519_android_workstation_vm`
+- `azure-vm/parameters/westeurope.local.bicepparam`
 
-### Configure the VS Code tunnel
+The private key stays local. It is not uploaded to Azure by this template.
 
-Run this once as your normal user:
+### 2. Review the deployment first
+
+From the repo root:
 
 ```bash
-code tunnel
+az login --use-device-code
+
+az deployment sub what-if \
+  --location westeurope \
+  --template-file azure-vm/main.bicep \
+  --parameters @azure-vm/parameters/westeurope.local.bicepparam
 ```
 
-Then:
-
-1. Complete the Microsoft sign-in flow.
-2. Note the tunnel URL shown by the command.
-3. Open that URL in the browser on your phone.
-4. Trust the workspace and install the extensions you want on the VM-hosted tunnel.
-
-To keep the tunnel available after logout:
-
-```bash
-sudo loginctl enable-linger "$USER"
-code tunnel service install
-```
-
-If the CLI prompts differ slightly in a future VS Code release, the fallback is still the same:
-
-- run `code tunnel`
-- complete sign-in
-- then install the service from the authenticated user context
-
-## 13. Deployment and Operating Guide
-
-### Deployment prerequisites
-
-Before you deploy, you need:
-
-- Azure CLI logged into the target subscription
-- Bicep CLI installed
-- one SSH key pair that you control
-
-Example key generation:
-
-```bash
-ssh-keygen -t ed25519 -C "martinjensen225@phone" -f ~/.ssh/id_ed25519_azure_vm
-```
-
-Use the public key from:
-
-```text
-~/.ssh/id_ed25519_azure_vm.pub
-```
-
-Keep the private key here:
-
-```text
-~/.ssh/id_ed25519_azure_vm
-```
-
-The private key is not deployed to Azure by this template.
-
-### Authentication and admin access model
-
-This Bicep deploys the VM in SSH-key-only mode:
-
-- no admin password is created
-- password login is disabled on the Linux VM
-- the `adminUsername` and `adminSshPublicKey` values are provided at deployment time
-
-Where things are stored:
-
-- `adminUsername` is stored as normal ARM deployment input and in the VM configuration
-- `adminSshPublicKey` is not secret; it is stored as deployment input and written into the VM user's `authorized_keys`
-- the SSH private key stays wherever you created it, such as your phone, laptop, password manager attachment store, or another key-management path you control
-- the template does not create Key Vault and does not store your private key in Azure
-
-Practical consequence:
-
-- if `adminSshSourceCidrs = []`, the VM still has no inbound SSH even when `outboundConnectivityMode = 'vmPublicIp'`
-- in that default mode, the public IP exists for outbound internet access, not for open inbound administration
-- to SSH directly, you must temporarily set `adminSshSourceCidrs` to your current public IP or CIDR
-- alternatively, use Azure Bastion Developer from the portal as the admin path
-
-### Deploy the Bicep
-
-Recommended workflow:
-
-1. Copy the example parameter file to a local file that you do not commit.
-2. Replace the sample public key with your own `.pub` content.
-3. Decide whether you want direct SSH on day one.
-
-Example:
-
-```bash
-cp azure-vm/parameters/westeurope.example.bicepparam azure-vm/parameters/westeurope.local.bicepparam
-```
-
-If you want direct SSH during bootstrap, set:
-
-```bicep
-param adminSshSourceCidrs = [
-  'YOUR.PUBLIC.IP.ADDRESS/32'
-]
-```
-
-If you want inbound SSH blocked, keep:
-
-```bicep
-param adminSshSourceCidrs = []
-```
-
-Deploy with your local parameter file:
+### 3. Deploy
 
 ```bash
 az deployment sub create \
@@ -484,98 +235,189 @@ az deployment sub create \
   --parameters @azure-vm/parameters/westeurope.local.bicepparam
 ```
 
-### How to connect after deployment
+### 4. Let first boot finish
 
-Option 1: Azure Bastion Developer
+On first boot, the VM now runs `customData` automatically.
 
-- keep `adminSshSourceCidrs = []`
-- deploy the VM
-- open the VM in Azure portal
-- use Bastion Developer or the portal SSH experience for first login
+What it does:
 
-Option 2: Direct SSH with your private key
+- OS updates
+- developer packages
+- official VS Code package and `code` CLI
+- optional Azure CLI, Bicep, Terraform, GitHub CLI, Docker
+- linger enablement
+- helper script creation
 
-- temporarily set `adminSshSourceCidrs` to your current public IP range
-- deploy or redeploy the template
-- connect with your private key
+Important Azure behavior to remember:
+
+- Azure custom data on Linux is made available at provisioning time
+- cloud-init processes scripts by default on supported Ubuntu images
+- custom data is not a safe place for secrets
+- custom data on single VMs is not updateable in-place later
+- cloud-init script failures do not automatically mean ARM reports the VM as failed
+
+To check the bootstrap state after you get an admin shell:
+
+```bash
+android-workstation-bootstrap-status
+```
+
+### 5. Perform the one-time manual tunnel registration
+
+This is the one unavoidable default human step.
+
+You need one admin shell on the VM so the machine can authenticate to your Microsoft or GitHub account.
+
+Recommended path:
+
+1. Temporarily set `adminSshSourceCidrs` in your local parameter file to your current public IP `/32`.
+2. Run `what-if` again.
+3. Redeploy.
+4. SSH in from Termux or another shell.
+5. Run the registration helper as the VM admin user.
+6. Remove the CIDR again and redeploy to close SSH.
 
 Example:
 
 ```bash
-ssh -i ~/.ssh/id_ed25519_azure_vm martin@<vm-public-ip>
+ssh -i ~/.ssh/id_ed25519_android_workstation_vm martin@<vm-public-ip>
+android-workstation-tunnel-register microsoft
 ```
 
-After bootstrap, you can remove the SSH rule again by setting:
+If you prefer GitHub auth:
 
-```bicep
-param adminSshSourceCidrs = []
+```bash
+android-workstation-tunnel-register github
 ```
 
-### Start the VM from your phone
+What that helper does:
 
-Default recommendation:
+```bash
+code tunnel user login --provider microsoft
+code tunnel service install --accept-server-license-terms --name <configured-name>
+code tunnel status
+```
 
-- use the Azure mobile app or Azure portal
-- pin the VM blade in the portal or save it as a browser shortcut
-- start the VM manually only when you intend to use it
+After that, the tunnel service should come back automatically on subsequent boots.
 
-### Stop the VM safely
+## Day-to-Day Operation From the Phone
 
-- let auto-shutdown catch the common case
-- manually stop and deallocate it from the portal when you finish early
-- confirm the state is `Stopped (Deallocated)`, not just `Stopped`
+The recommended daily pattern is:
 
-### Avoid unnecessary cost
+1. Start the VM from the Azure mobile app or Azure portal.
+2. Wait a short time for the VM and tunnel service to come up.
+3. Open the tunnel URL in the phone browser.
+4. Work normally in browser-based VS Code.
+5. Let auto-shutdown stop the VM, or deallocate it manually when you finish.
 
-- use `vmPublicIp` before `natGateway` unless you have a hard no-public-IP requirement
-- do not deploy paid Bastion SKUs
-- do not add Azure Firewall
-- keep log ingestion minimal
-- use the budget alert
-- leave the VM size at `Standard_B2ms` unless you prove you need more
+This keeps the phone as a client only and keeps compute on the VM.
 
-### Maintain the VM over time
+## Admin Access Recommendation
 
-- apply package updates regularly
-- keep the VS Code CLI current with package updates
-- review disk usage before it silently forces a disk resize
-- prune stale container images if you install Docker
-- keep the SSH key list tight if you ever enable direct SSH
+Best default:
 
-### What to monitor
+- keep `adminSshSourceCidrs = []`
+- keep the fallback SSH key outside Azure
+- open SSH only temporarily from your current public IP when you need emergency admin access
 
-- monthly credit burn
-- VM state
-- tunnel reliability
-- disk growth
-- package update backlog
+Why not make SSH the primary workflow:
 
-## 14. Risks, Caveats, and Future Improvements
+- it is not your desired interaction model
+- the tunnel gives the better phone-browser experience
+- keeping SSH closed by default reduces attack surface
 
-- This design is online-dependent. The phone-hosted Debian path is still your offline fallback.
-- Azure browser latency will be better for heavy editor work, but worse than local for complete internet outages.
-- If you choose burstable B-series, sustained CPU-heavy workloads can feel less predictable than D-series.
-- If you start using more containers, `Standard_D2as_v5` may become the better pick.
-- If you later want true one-tap start from the phone, the next sensible addition is a small webhook-triggered Automation or Logic App path.
-- If you later want the VM to have no public IP at all, switch to `outboundConnectivityMode = 'natGateway'` and accept the extra fixed cost.
-- If you later want the absolute lowest cost and are comfortable relying on Azure default outbound behavior, use `outboundConnectivityMode = 'defaultOutbound'` as a compatibility mode.
+## Secret Handling Recommendation
 
-## Microsoft Documentation and Pricing Links
+### SSH keys
 
-- Visual Studio subscriber credit guidance:
-  - https://learn.microsoft.com/en-us/answers/questions/307496/if-subscription-visual-studio-enterprise-subscript
-  - https://learn.microsoft.com/en-us/answers/questions/412125/does-visual-studio-enterprise-associated-azure-cre
-- Azure VM pricing and billing behavior:
-  - https://azure.microsoft.com/en-us/pricing/details/virtual-machines/linux/
-- Azure Managed Disks pricing:
-  - https://azure.microsoft.com/en-us/pricing/details/managed-disks/
-- Azure Bastion FAQ:
-  - https://learn.microsoft.com/en-us/azure/bastion/bastion-faq
-- Azure Bastion pricing:
-  - https://azure.microsoft.com/en-us/pricing/details/azure-bastion/
+Recommended:
+
+- generate locally with `prepare-local-deployment.sh`
+- deploy only the public key
+- keep the private key local
+
+Not recommended by default:
+
+- generating the only private key inside Azure
+- storing the SSH private key in a new Key Vault just for this VM
+
+### VS Code tunnel tokens
+
+Possible in principle:
+
+- the CLI can accept an access token or refresh token
+
+Not recommended by default here:
+
+- storing that token in Bicep parameters
+- passing it in VM `customData`
+- creating a new Key Vault just to avoid one interactive login
+
+## Cost and Security Notes
+
+### Recommended cost posture
+
+- use `Standard_B2ms` first
+- use auto-shutdown
+- manually start the VM only when needed
+- deallocate it when done
+- avoid Azure Firewall
+- avoid NAT Gateway unless you have a hard no-public-IP requirement
+
+### Current Microsoft pricing guidance used here
+
+The current Microsoft pricing pages remain the source of truth, but many Azure price tables are rendered dynamically and do not expose all live numeric cells cleanly through static page retrieval.
+
+So this README keeps the recommendation practical and cost-aware without freezing unverified rate-card numbers into the repo. Use the live pricing pages and calculator for your exact offer and region before deployment.
+
+What is still clear from current Microsoft sources:
+
+- Visual Studio Enterprise Azure credit is typically 150 USD per month for dev/test use
+- dev/test subscriptions can have limitations, including continuously running instances being suspended after long runtimes
+- Azure Virtual Network itself is free
+- VM auto-shutdown is built in and intended to reduce off-hours cost
+- explicit outbound is recommended as Azure moves new VNets toward private-by-default behavior after March 31, 2026
+
+### Practical pricing tradeoff
+
+For a single-user dev/test VM:
+
+- `vmPublicIp` remains the best default
+- NAT Gateway is cleaner architecturally, but it adds fixed hourly cost you do not need for this repo by default
+- dedicated security services can dominate the bill faster than the VM itself if you leave them on
+
+## Caveats
+
+- `customData` is a first-boot mechanism. Changing the script later does not re-run it automatically on an existing single VM.
+- If the bootstrap script fails, Azure may still show the VM provisioned because of cloud-init behavior. Check the bootstrap log if needed.
+- If you keep SSH fully closed and do not provide a tunnel auth token through some other secure path, you still need one admin session after deployment.
+- Remote Tunnels are single-user oriented. The same GitHub or Microsoft account must be used on both sides.
+
+## Source Links
+
+Microsoft Learn and Microsoft pricing pages used for this design:
+
+- Remote Tunnels:
+  https://code.visualstudio.com/docs/remote/tunnels
+- VS Code command-line interface:
+  https://code.visualstudio.com/docs/editor/command-line
+- Azure VM custom data and cloud-init:
+  https://learn.microsoft.com/en-us/azure/virtual-machines/custom-data
+- Default outbound access:
+  https://learn.microsoft.com/en-us/azure/virtual-network/ip-services/default-outbound-access
 - Auto-shutdown for Azure VMs:
-  - https://learn.microsoft.com/en-us/azure/virtual-machines/auto-shutdown-vm
-- Azure Bastion deployment guidance:
-  - https://learn.microsoft.com/en-us/azure/bastion/quickstart-deploy-terraform
-- Default outbound access and the March 31, 2026 behavior change:
-  - https://learn.microsoft.com/en-us/azure/virtual-network/ip-services/default-outbound-access
+  https://learn.microsoft.com/en-us/azure/virtual-machines/auto-shutdown-vm
+- Azure virtual machines pricing:
+  https://azure.microsoft.com/en-us/pricing/details/virtual-machines/linux/
+- Azure managed disks pricing:
+  https://azure.microsoft.com/en-us/pricing/details/managed-disks/
+- Azure virtual network pricing:
+  https://azure.microsoft.com/en-us/pricing/details/virtual-network/
+- Azure public IP pricing:
+  https://azure.microsoft.com/en-us/pricing/details/ip-addresses/
+- Azure Bastion pricing:
+  https://azure.microsoft.com/en-us/pricing/details/azure-bastion/
+- Azure dev/test pricing:
+  https://azure.microsoft.com/en-us/pricing/offers/dev-test
+- Visual Studio subscriber Azure credit guidance:
+  https://learn.microsoft.com/en-us/answers/questions/2283042/can-i-use-my-msdn-visual-studio-enterprise-subscri
