@@ -4,6 +4,15 @@
 
 Hosting the development environment and the VS Code tunnel on an Azure Linux VM is a good idea for your setup if you treat it as an on-demand complement to the phone-hosted Debian path, not as a total replacement for it.
 
+Important outbound correction, based on current Microsoft guidance as of March 19, 2026:
+
+- My first draft was incomplete on outbound internet access.
+- A brand-new Azure VNet created after March 31, 2026 is private-by-default when you use newer API versions and defaults.
+- For this VM to run `code tunnel`, package updates, and Git over the internet, it needs outbound connectivity.
+- The cost-aware future-proof default in this repo is now `outboundConnectivityMode = 'vmPublicIp'`, which gives the VM an explicit Standard public IP for egress while leaving inbound SSH blocked unless you explicitly supply `adminSshSourceCidrs`.
+- If you insist on no public IP at all, use `outboundConnectivityMode = 'natGateway'` and accept the higher fixed cost.
+- If you want the cheapest bridge and are willing to rely on Azure default outbound behavior, use `outboundConnectivityMode = 'defaultOutbound'`.
+
 The big wins are:
 
 - Much better extension compatibility than Debian-in-`proot-distro` on the phone, because the VM is a normal Azure Linux host instead of an Android-shaped userspace.
@@ -38,6 +47,7 @@ This is the target architecture evaluated and implemented here:
 - Region assumption for cost modeling: `West Europe`.
 - OS assumption: Ubuntu Linux on Azure.
 - Primary access pattern: browser-based VS Code over a VS Code tunnel.
+- Default outbound mode in the provided Bicep: `vmPublicIp`
 - Security requirement: no Azure Firewall, avoid unnecessary always-on paid services.
 - IaC requirement: Bicep, with Azure Verified Modules where safely applied.
 - Current repo context: the phone-hosted `proot-distro` path remains valid and is not being replaced at the client layer.
@@ -50,6 +60,7 @@ Source notes:
 - Azure Bastion pricing page currently shows Azure Bastion Developer as free.
 - Azure VM pricing pages confirm VM compute stops billing when the state is `Stopped (Deallocated)`, while managed disks still bill.
 - Azure Managed Disk pricing pages confirm disks bill independently from VM runtime.
+- Azure Virtual Network default outbound guidance states that after March 31, 2026, API versions released after that date default new VNet subnets to private and require explicit outbound to reach public endpoints.
 
 Pricing note:
 
@@ -62,7 +73,7 @@ Pricing note:
 | Option | Cost | Setup complexity | Security posture | Extension compatibility | Browser responsiveness from phone | Battery and heat on phone | Operational friction | Reliability | DeX fit | Honest verdict |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | Phone-hosted Debian in `proot-distro` plus VS Code tunnel | Lowest direct cloud cost | Medium to high | Good if you keep everything local and outbound-only | Better than local `code-server`, still ARM64 and Android-shaped | Fine for light work, weaker for heavier indexing | Worst of the three | Lowest cloud friction, highest device babysitting | Depends on Android background behavior, battery, thermals | Strong when offline matters | Best zero-cost fallback, but still compromised by phone limits |
-| Azure Linux VM plus VS Code tunnel | Low if you stop the VM, moderate if you forget | Medium | Best balance when private-by-default and no public IP | Best overall for your stated workflow | Usually best if the network is stable | Best | Some Azure management overhead, but manageable | Better than phone-hosted for long sessions | Excellent because DeX client stays the same | Best overall online option |
+| Azure Linux VM plus VS Code tunnel | Low if you stop the VM, moderate if you forget | Medium | Best balance when explicit outbound is configured and inbound is tightly restricted | Best overall for your stated workflow | Usually best if the network is stable | Best | Some Azure management overhead, but manageable | Better than phone-hosted for long sessions | Excellent because DeX client stays the same | Best overall online option |
 | Azure Linux VM plus Remote SSH only | Similar VM cost | Medium to high | Good if hardened correctly | Strong on desktop, weak for phone-browser workflow | Poor fit for phone browser because Remote SSH expects a richer client | Best | Higher friction from the phone | Good technically, but wrong interaction model | Weak for your stated browser-first DeX flow | Not recommended as the primary path |
 
 ## 5. Cost Breakdown and Scenario Analysis
@@ -72,7 +83,7 @@ Pricing note:
 - Region: `West Europe`
 - VM OS: Ubuntu Linux
 - OS disk: `64 GiB StandardSSD_LRS`
-- Recommended security model: no public IP, no paid Bastion, no Azure Firewall
+- Recommended security model: explicit outbound via a Standard public IP, no inbound SSH rule by default, no paid Bastion, no Azure Firewall
 - Estimated fixed monthly carry cost while deallocated: about `5.50 USD` for the OS disk
 - Estimated outbound network cost for this text-heavy workflow: negligible unless you start pulling large container images or big package caches regularly
 
@@ -138,49 +149,49 @@ These scenario totals include the fixed OS disk carry cost.
 
 ## 6. Security Comparison
 
-### Option A: No public IP, VS Code tunnel only
+### Option A: Standard public IP for explicit outbound, but no inbound SSH rule by default
 
 - Attack surface:
-  lowest. The VM only needs outbound internet access for the tunnel and package updates.
+  higher than a fully private VM, but still reasonable when the NSG keeps all inbound SSH blocked.
 - Recurring cost:
-  lowest
+  low
 - Operational friction:
-  moderate on day one because you need an admin fallback for bootstrap and repair
+  low. The VM has explicit outbound connectivity for the tunnel and package management without needing NAT Gateway.
 - Suitability:
   excellent for a single-user dev/test VM
 - Recommendation:
-  yes, this is the default recommendation
+  yes, this is now the default recommendation
 
-### Option B: No public IP, plus Azure Bastion Developer for emergency admin
+### Option B: No public IP, NAT Gateway, and optional Bastion Developer for admin
 
 - Attack surface:
-  still low, because the VM remains private
+  lowest, because the VM remains private and egress is explicit.
 - Recurring cost:
-  effectively zero based on the current Bastion pricing page
+  materially higher because NAT Gateway has an always-on hourly charge.
 - Operational friction:
-  low enough for occasional admin, but not pleasant enough to be your daily development path
+  moderate. This is architecturally cleaner, but much less cost-efficient for one personal dev/test VM.
 - Suitability:
-  excellent as a repair and first-login path
+  excellent if you have a hard requirement for no public IP on the VM
 - Recommendation:
-  yes, as the admin fallback
+  only if you explicitly want a no-public-IP design
 
-### Option C: No public IP, paid Azure Bastion Basic or Standard
+### Option C: Default outbound compatibility mode on a non-private subnet
 
 - Attack surface:
-  still very good
+  low inbound exposure because there is still no VM public IP, but it relies on Azure default outbound behavior rather than an explicit owned egress method.
 - Recurring cost:
-  poor fit, because Bastion is billed hourly from deployment until deletion
+  lowest
 - Operational friction:
   low
 - Suitability:
-  technically strong, financially weak for a single-user dev/test VM
+  acceptable as a temporary bridge if you want no public IP and also do not want NAT Gateway cost
 - Recommendation:
-  no
+  transitional only, not the long-term preferred design
 
-### Option D: Public SSH with strong hardening and NSG restrictions
+### Option D: Public IP plus restricted inbound SSH
 
 - Attack surface:
-  materially larger than tunnel-only
+  materially larger than outbound-only public IP
 - Recurring cost:
   still low, but higher than private-only because of the public IP
 - Operational friction:
@@ -192,7 +203,7 @@ These scenario totals include the fixed OS disk carry cost.
 
 ### NSG-only and JIT notes
 
-- NSG-only is good hygiene, but it does not replace the security benefit of avoiding a public IP altogether.
+- NSG-only is what makes the `vmPublicIp` pattern workable here: the public IP gives explicit outbound, while the NSG keeps inbound closed unless you choose otherwise.
 - Just-In-Time access can be useful when you expose SSH publicly, but it adds complexity and is not necessary for the recommended tunnel-only design.
 
 ## 7. Start/Stop Trigger Comparison
@@ -218,10 +229,11 @@ That gives you the best security-to-friction ratio because there is no extra web
 The best overall design for your use case is:
 
 - `Standard_B2ms` Ubuntu VM in `West Europe`
-- no public IP by default
+- `outboundConnectivityMode = 'vmPublicIp'`
+- no inbound SSH rule by default
 - VS Code tunnel hosted on the VM
 - browser on the phone remains the client
-- Azure Bastion Developer only as the emergency admin path
+- optional restricted SSH only if you explicitly provide `adminSshSourceCidrs`
 - built-in VM auto-shutdown
 - manual start from Azure mobile app or Azure portal
 - optional subscription budget alert at 100 USD
@@ -274,11 +286,12 @@ Lean recommended resource set:
 - Network security group
 - Linux VM with system-assigned managed identity
 - Managed OS disk
+- Standard public IP for explicit outbound in the default mode
 - Optional subscription budget
 
 Intentionally omitted by default:
 
-- Public IP
+- NAT Gateway
 - Azure Firewall
 - Paid Bastion
 - Key Vault
@@ -324,9 +337,9 @@ Files:
 
 Recommended path:
 
-1. Deploy the Bicep with `enablePublicIp=false`.
-2. Open the Azure portal on the phone.
-3. Use Azure Bastion Developer from the VM blade for the first SSH session.
+1. Deploy the Bicep with `outboundConnectivityMode='vmPublicIp'`.
+2. Leave `adminSshSourceCidrs` empty if you want inbound SSH blocked.
+3. If you want first-day SSH administration, temporarily add your current public IP range to `adminSshSourceCidrs`.
 4. Clone this repo or paste the script into the VM.
 
 ### Run the bootstrap script
@@ -409,7 +422,7 @@ Default recommendation:
 
 ### Avoid unnecessary cost
 
-- keep the public IP disabled unless you really need it
+- use `vmPublicIp` before `natGateway` unless you have a hard no-public-IP requirement
 - do not deploy paid Bastion SKUs
 - do not add Azure Firewall
 - keep log ingestion minimal
@@ -439,7 +452,8 @@ Default recommendation:
 - If you choose burstable B-series, sustained CPU-heavy workloads can feel less predictable than D-series.
 - If you start using more containers, `Standard_D2as_v5` may become the better pick.
 - If you later want true one-tap start from the phone, the next sensible addition is a small webhook-triggered Automation or Logic App path.
-- If you later need stronger admin access than Bastion Developer provides, add a temporary public IP or move to a paid Bastion SKU only after checking the exact price impact.
+- If you later want the VM to have no public IP at all, switch to `outboundConnectivityMode = 'natGateway'` and accept the extra fixed cost.
+- If you later want the absolute lowest cost and are comfortable relying on Azure default outbound behavior, use `outboundConnectivityMode = 'defaultOutbound'` as a compatibility mode.
 
 ## Microsoft Documentation and Pricing Links
 
@@ -458,3 +472,5 @@ Default recommendation:
   - https://learn.microsoft.com/en-us/azure/virtual-machines/auto-shutdown-vm
 - Azure Bastion deployment guidance:
   - https://learn.microsoft.com/en-us/azure/bastion/quickstart-deploy-terraform
+- Default outbound access and the March 31, 2026 behavior change:
+  - https://learn.microsoft.com/en-us/azure/virtual-network/ip-services/default-outbound-access

@@ -27,10 +27,15 @@ param virtualNetworkAddressPrefix string = '10.44.0.0/24'
 @description('Address prefix for the workload subnet.')
 param subnetAddressPrefix string = '10.44.0.0/26'
 
-@description('Set to true only if you explicitly want direct SSH over a public IP. The recommended design keeps this disabled.')
-param enablePublicIp bool = false
+@description('Outbound connectivity strategy for the VM subnet. vmPublicIp is the low-cost explicit method, natGateway is the most private, and defaultOutbound is a temporary compatibility path that keeps Azure implicit outbound behavior.')
+@allowed([
+  'vmPublicIp'
+  'natGateway'
+  'defaultOutbound'
+])
+param outboundConnectivityMode string = 'vmPublicIp'
 
-@description('CIDR ranges allowed to SSH to the VM when a public IP is enabled.')
+@description('CIDR ranges allowed to SSH to the VM when outboundConnectivityMode is vmPublicIp. Leave empty to keep all inbound SSH blocked.')
 param adminSshSourceCidrs array = []
 
 @description('Linux image publisher.')
@@ -120,7 +125,7 @@ module vmStack './modules/dev-vm-stack.bicep' = {
     vmSize: vmSize
     virtualNetworkAddressPrefix: virtualNetworkAddressPrefix
     subnetAddressPrefix: subnetAddressPrefix
-    enablePublicIp: enablePublicIp
+    outboundConnectivityMode: outboundConnectivityMode
     adminSshSourceCidrs: adminSshSourceCidrs
     imagePublisher: imagePublisher
     imageOffer: imageOffer
@@ -179,5 +184,6 @@ output virtualNetworkResourceId string = vmStack.outputs.virtualNetworkResourceI
 output subnetResourceId string = vmStack.outputs.subnetResourceId
 output networkSecurityGroupResourceId string = vmStack.outputs.networkSecurityGroupResourceId
 output vmNicSummary array = vmStack.outputs.vmNicSummary
-output publicIpEnabled bool = enablePublicIp
+output outboundConnectivityMode string = outboundConnectivityMode
+output publicIpEnabled bool = outboundConnectivityMode == 'vmPublicIp'
 output budgetCreated bool = deployBudget

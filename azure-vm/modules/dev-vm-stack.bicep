@@ -24,10 +24,10 @@ param virtualNetworkAddressPrefix string
 @description('Address prefix for the workload subnet.')
 param subnetAddressPrefix string
 
-@description('Enable a public IP for direct SSH. Leave false for the recommended tunnel-only design.')
-param enablePublicIp bool
+@description('Outbound connectivity strategy. vmPublicIp adds a Standard public IP to the VM NIC, natGateway keeps the VM private and adds subnet-level NAT, and defaultOutbound leaves the subnet non-private to preserve Azure default outbound behavior.')
+param outboundConnectivityMode string
 
-@description('CIDR ranges allowed to SSH to the VM if a public IP is enabled.')
+@description('CIDR ranges allowed to SSH to the VM when outboundConnectivityMode is vmPublicIp.')
 param adminSshSourceCidrs array
 
 @description('Linux image publisher.')
@@ -66,8 +66,43 @@ param tags object = {}
 var vnetName = 'vnet-${vmName}'
 var subnetName = 'snet-dev'
 var nsgName = 'nsg-${vmName}'
-var allowRestrictedSshRule = enablePublicIp && !empty(adminSshSourceCidrs)
+var natGatewayName = 'ngw-${vmName}'
+var natGatewayPublicIpName = 'pip-ngw-${vmName}'
+var useVmPublicIp = outboundConnectivityMode == 'vmPublicIp'
+var useNatGateway = outboundConnectivityMode == 'natGateway'
+var makeSubnetPrivate = useVmPublicIp || useNatGateway
+var allowRestrictedSshRule = useVmPublicIp && !empty(adminSshSourceCidrs)
 var subnetResourceId = '${virtualNetwork.id}/subnets/${subnetName}'
+
+resource natGatewayPublicIp 'Microsoft.Network/publicIPAddresses@2024-05-01' = if (useNatGateway) {
+  name: natGatewayPublicIpName
+  location: location
+  sku: {
+    name: 'Standard'
+  }
+  tags: tags
+  properties: {
+    publicIPAllocationMethod: 'Static'
+    publicIPAddressVersion: 'IPv4'
+  }
+}
+
+resource natGateway 'Microsoft.Network/natGateways@2024-05-01' = if (useNatGateway) {
+  name: natGatewayName
+  location: location
+  sku: {
+    name: 'Standard'
+  }
+  tags: tags
+  properties: {
+    idleTimeoutInMinutes: 10
+    publicIpAddresses: [
+      {
+        id: natGatewayPublicIp.id
+      }
+    ]
+  }
+}
 
 resource virtualNetwork 'Microsoft.Network/virtualNetworks@2024-05-01' = {
   name: vnetName
@@ -82,9 +117,19 @@ resource virtualNetwork 'Microsoft.Network/virtualNetworks@2024-05-01' = {
     subnets: [
       {
         name: subnetName
-        properties: {
-          addressPrefix: subnetAddressPrefix
-        }
+        properties: union(
+          {
+            addressPrefix: subnetAddressPrefix
+          },
+          makeSubnetPrivate ? {
+            defaultOutboundAccess: false
+          } : {},
+          useNatGateway ? {
+            natGateway: {
+              id: natGateway.id
+            }
+          } : {}
+        )
       }
     ]
   }
@@ -155,7 +200,7 @@ module vm 'br/public:avm/res/compute/virtual-machine:0.21.0' = {
             name: 'ipconfig01'
             privateIPAllocationMethod: 'Dynamic'
             subnetResourceId: subnetResourceId
-            pipConfiguration: enablePublicIp ? {
+            pipConfiguration: useVmPublicIp ? {
               publicIpNameSuffix: '-pip-01'
               publicIPAllocationMethod: 'Static'
               publicIPAddressVersion: 'IPv4'
