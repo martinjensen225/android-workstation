@@ -2,6 +2,8 @@
 
 This bundle turns the DeX workstation guide into a rerunnable, Termux-first bootstrap kit for a fresh Galaxy S25 Edge. It automates the repeatable shell and file-system work, and leaves app installs, Android permissions, GUI logins, and Samsung settings in a separate manual checklist.
 
+If you want to keep the same phone-browser VS Code experience but move the tunnel host off the phone and onto Azure, see the Azure VM evaluation and Bicep package in [azure-vm/README.md](./azure-vm/README.md).
+
 ## First Run on a New Phone
 
 1. Install Termux from F-Droid or GitHub releases.

@@ -1,2 +1,3 @@
 .env
 manifest/repos.local.json
+.azure/
