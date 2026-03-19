@@ -397,13 +397,118 @@ If the CLI prompts differ slightly in a future VS Code release, the fallback is 
 
 ## 13. Deployment and Operating Guide
 
+### Deployment prerequisites
+
+Before you deploy, you need:
+
+- Azure CLI logged into the target subscription
+- Bicep CLI installed
+- one SSH key pair that you control
+
+Example key generation:
+
+```bash
+ssh-keygen -t ed25519 -C "martinjensen225@phone" -f ~/.ssh/id_ed25519_azure_vm
+```
+
+Use the public key from:
+
+```text
+~/.ssh/id_ed25519_azure_vm.pub
+```
+
+Keep the private key here:
+
+```text
+~/.ssh/id_ed25519_azure_vm
+```
+
+The private key is not deployed to Azure by this template.
+
+### Authentication and admin access model
+
+This Bicep deploys the VM in SSH-key-only mode:
+
+- no admin password is created
+- password login is disabled on the Linux VM
+- the `adminUsername` and `adminSshPublicKey` values are provided at deployment time
+
+Where things are stored:
+
+- `adminUsername` is stored as normal ARM deployment input and in the VM configuration
+- `adminSshPublicKey` is not secret; it is stored as deployment input and written into the VM user's `authorized_keys`
+- the SSH private key stays wherever you created it, such as your phone, laptop, password manager attachment store, or another key-management path you control
+- the template does not create Key Vault and does not store your private key in Azure
+
+Practical consequence:
+
+- if `adminSshSourceCidrs = []`, the VM still has no inbound SSH even when `outboundConnectivityMode = 'vmPublicIp'`
+- in that default mode, the public IP exists for outbound internet access, not for open inbound administration
+- to SSH directly, you must temporarily set `adminSshSourceCidrs` to your current public IP or CIDR
+- alternatively, use Azure Bastion Developer from the portal as the admin path
+
 ### Deploy the Bicep
+
+Recommended workflow:
+
+1. Copy the example parameter file to a local file that you do not commit.
+2. Replace the sample public key with your own `.pub` content.
+3. Decide whether you want direct SSH on day one.
+
+Example:
+
+```bash
+cp azure-vm/parameters/westeurope.example.bicepparam azure-vm/parameters/westeurope.local.bicepparam
+```
+
+If you want direct SSH during bootstrap, set:
+
+```bicep
+param adminSshSourceCidrs = [
+  'YOUR.PUBLIC.IP.ADDRESS/32'
+]
+```
+
+If you want inbound SSH blocked, keep:
+
+```bicep
+param adminSshSourceCidrs = []
+```
+
+Deploy with your local parameter file:
 
 ```bash
 az deployment sub create \
   --location westeurope \
   --template-file azure-vm/main.bicep \
-  --parameters @azure-vm/parameters/westeurope.example.bicepparam
+  --parameters @azure-vm/parameters/westeurope.local.bicepparam
+```
+
+### How to connect after deployment
+
+Option 1: Azure Bastion Developer
+
+- keep `adminSshSourceCidrs = []`
+- deploy the VM
+- open the VM in Azure portal
+- use Bastion Developer or the portal SSH experience for first login
+
+Option 2: Direct SSH with your private key
+
+- temporarily set `adminSshSourceCidrs` to your current public IP range
+- deploy or redeploy the template
+- connect with your private key
+
+Example:
+
+```bash
+ssh -i ~/.ssh/id_ed25519_azure_vm martin@<vm-public-ip>
+```
+
+After bootstrap, you can remove the SSH rule again by setting:
+
+```bicep
+param adminSshSourceCidrs = []
 ```
 
 ### Start the VM from your phone
