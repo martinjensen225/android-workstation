@@ -1,0 +1,23 @@
+name: PR Bicep Validation
+
+on:
+  pull_request:
+    paths:
+      - "Bicep/**"
+      - "bicepconfig.json"
+
+permissions:
+  contents: read
+  id-token: write
+  issues: write
+
+jobs:
+  validate:
+    uses: martinjensen225/bicep-action/.github/workflows/bicep-ci.yml@v2
+    with:
+      scope: subscription
+      location: westeurope
+      template_path: Bicep/main.bicep
+      parameters_path: Bicep/main.bicepparam
+      deployment_name_prefix: android-workstation-vm
+    secrets: inherit

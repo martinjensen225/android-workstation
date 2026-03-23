@@ -1,0 +1,25 @@
+name: Deploy Bicep
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "Bicep/**"
+      - "bicepconfig.json"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy:
+    uses: martinjensen225/bicep-action/.github/workflows/bicep-apply.yml@v2
+    with:
+      scope: subscription
+      location: westeurope
+      template_path: Bicep/main.bicep
+      parameters_path: Bicep/main.bicepparam
+      deployment_name_prefix: android-workstation-vm
+    secrets: inherit

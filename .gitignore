@@ -2,3 +2,4 @@
 manifest/repos.local.json
 .azure/
 azure-vm/parameters/*.local.bicepparam
+Bicep/parameters/*.local.bicepparam

@@ -5,9 +5,10 @@ set -Eeuo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 AZURE_VM_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 REPO_ROOT="$(cd "${AZURE_VM_DIR}/.." && pwd)"
+BICEP_DIR="${REPO_ROOT}/Bicep"
 
-SOURCE_PARAMETERS_FILE="${AZURE_VM_DIR}/parameters/westeurope.example.bicepparam"
-TARGET_PARAMETERS_FILE="${AZURE_VM_DIR}/parameters/westeurope.local.bicepparam"
+SOURCE_PARAMETERS_FILE="${BICEP_DIR}/main.bicepparam"
+TARGET_PARAMETERS_FILE="${BICEP_DIR}/parameters/main.local.bicepparam"
 SSH_KEY_PATH="${HOME}/.ssh/id_ed25519_android_workstation_vm"
 ADMIN_USERNAME="martin"
 TUNNEL_NAME="android-workstation-weu"
@@ -17,15 +18,16 @@ usage() {
   cat <<EOF
 Usage: $(basename "$0") [options]
 
-Prepares a local parameter file and fallback SSH key for the Azure VM deployment flow.
-This is designed to work from a Linux shell such as Termux + proot-distro, WSL, or Cloud Shell.
+Prepares a local fallback parameter file and admin SSH key for the Azure VM deployment flow.
+GitHub Actions is the primary deployment path. This helper exists for local fallback use from
+a Linux shell such as Termux + proot-distro, WSL, or Cloud Shell.
 
 Options:
   --parameters-file <path>   Write the local parameter file to this path.
   --ssh-key-path <path>      Generate or reuse the fallback SSH key at this path.
   --admin-username <name>    Set adminUsername in the local parameter file.
   --tunnel-name <name>       Set vscodeTunnelName in the local parameter file.
-  --overwrite                Recopy the example parameter file before patching values.
+  --overwrite                Recopy the canonical parameter file before patching values.
   --help                     Show this help text.
 EOF
 }
@@ -151,14 +153,15 @@ apply_local_values() {
 print_next_steps() {
   cat <<EOF
 
-Prepared local deployment inputs.
+Prepared local fallback deployment inputs.
 
 Repo root: ${REPO_ROOT}
+Canonical GitHub parameter file: ${SOURCE_PARAMETERS_FILE}
 Local parameter file: ${TARGET_PARAMETERS_FILE}
 Fallback SSH private key: ${SSH_KEY_PATH}
 Fallback SSH public key: ${SSH_KEY_PATH}.pub
 
-Suggested next steps from your phone or another admin shell:
+Suggested next steps if you intentionally want the local fallback path:
 
   1. Sign in:
      az login --use-device-code
@@ -166,19 +169,23 @@ Suggested next steps from your phone or another admin shell:
   2. Review the deployment:
      az deployment sub what-if \\
        --location westeurope \\
-       --template-file ${AZURE_VM_DIR}/main.bicep \\
+       --template-file ${BICEP_DIR}/main.bicep \\
        --parameters @${TARGET_PARAMETERS_FILE}
 
   3. Deploy after the what-if looks right:
      az deployment sub create \\
        --location westeurope \\
-       --template-file ${AZURE_VM_DIR}/main.bicep \\
+       --template-file ${BICEP_DIR}/main.bicep \\
        --parameters @${TARGET_PARAMETERS_FILE}
 
   4. If you need a one-time admin shell to register the VS Code tunnel, temporarily set
      adminSshSourceCidrs in ${TARGET_PARAMETERS_FILE} to your current public IP /32, run
      what-if again, redeploy, SSH in, run android-workstation-tunnel-register, and then
      remove the CIDR again.
+
+GitHub Actions remains the primary deployment path through:
+  - .github/workflows/pr.yml
+  - .github/workflows/deploy.yml
 EOF
 }
 
