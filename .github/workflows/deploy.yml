@@ -15,7 +15,7 @@ permissions:
 
 jobs:
   deploy:
-    uses: martinjensen225/bicep-action/.github/workflows/bicep-apply.yml@v3
+    uses: martinjensen225/bicep-action/.github/workflows/bicep-apply.yml@v4.2
     with:
       scope: subscription
       location: westeurope

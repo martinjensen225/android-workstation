@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   validate:
-    uses: martinjensen225/bicep-action/.github/workflows/bicep-ci.yml@v3
+    uses: martinjensen225/bicep-action/.github/workflows/bicep-ci.yml@v4.2
     with:
       scope: subscription
       location: westeurope
